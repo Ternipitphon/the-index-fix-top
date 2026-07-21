@@ -2,7 +2,7 @@
    AgriFuture AI — Chat JS  v3.0
    ══════════════════════════════════════════ */
 
-const API_URL = 'https://the-index-d3hd.onrender.com/chat';
+const API_URL = 'https://the-index-fix-top.vercel.app/Chatai.html';
 const MAX_CHARS = 2000;
 
 /* ── DOM refs ── */
