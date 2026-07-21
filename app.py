@@ -12,14 +12,16 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
-# 1. ตั้งค่า CORS อนุญาตทุก Route ให้ Frontend บน Vercel/Domain อื่นๆ เรียกใช้ได้ 100%
+# 1. ตั้งค่า CORS อนุญาตทุก Route
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # กำหนด API Key ของ Gemini
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+gemini_key = os.environ.get("GEMINI_API_KEY")
+if gemini_key:
+    genai.configure(api_key=gemini_key)
 
-# เลือกใข้ Gemini Model ที่ถูกต้อง (ใช้ 1.5-flash เพื่อความรวดเร็วและประหยัด)
-MODEL_NAME = "gemini-1.5-flash"
+# ✅ แก้ไข: เปลี่ยนเป็น gemini-2.0-flash ที่อัปเดตและเสถียรที่สุด
+MODEL_NAME = "gemini-2.0-flash"
 
 # ══════════════════════════════════════════════════════════════
 # หน้าเว็บ (static pages)
@@ -51,7 +53,7 @@ def generate_content_with_retry(model, prompt, retries=5, backoff_in_seconds=2):
 @app.route('/api/analyze', methods=['POST'])
 def analyze_crop():
     try:
-        data = request.json
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({"success": False, "error": "[AgriFuture-Backend] ไม่พบข้อมูลที่ส่งมาจากหน้าบ้าน (Body ว่างเปล่า)"}), 400
 
@@ -346,7 +348,7 @@ def chat_api():
         return jsonify({'status': 'CORS OK'}), 200
 
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         user_message = extract_user_message(data)
 
         if not user_message:
@@ -455,7 +457,7 @@ def plan_api():
         if not os.environ.get("GEMINI_API_KEY"):
             return jsonify({'success': False, 'error': 'เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า GEMINI_API_KEY'}), 500
 
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         if not data.get('crop_name'):
             return jsonify({'success': False, 'error': 'ไม่พบข้อมูลพืชที่จะวางแผนปลูก'}), 400
 
