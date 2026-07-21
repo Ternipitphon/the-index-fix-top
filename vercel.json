@@ -7,6 +7,10 @@
   ],
   "routes": [
     {
+      "src": "/",
+      "dest": "/form.html"
+    },
+    {
       "src": "/chat",
       "dest": "api/index.py"
     },
