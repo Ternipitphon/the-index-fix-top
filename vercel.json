@@ -1,7 +1,7 @@
 {
   "builds": [
     {
-      "src": "api/index.py",
+      "src": "api/app.py",
       "use": "@vercel/python"
     }
   ],
@@ -12,15 +12,11 @@
     },
     {
       "src": "/chat",
-      "dest": "api/index.py"
+      "dest": "api/app.py"
     },
     {
       "src": "/api/(.*)",
-      "dest": "api/index.py"
-    },
-    {
-      "src": "/health",
-      "dest": "api/index.py"
+      "dest": "api/app.py"
     },
     {
       "src": "/(.*)",
