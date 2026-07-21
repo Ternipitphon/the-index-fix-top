@@ -1,8 +1,10 @@
 /* ══════════════════════════════════════════
-   AgriFuture AI — Chat JS  v3.0
+   AgriFuture AI — Chat JS  v3.0 (Fixed Endpoint)
    ══════════════════════════════════════════ */
 
-const API_URL = 'https://the-index-fix-top.vercel.app/Chatai.html';
+// ✅ แก้ไข: เปลี่ยนจาก 'https://.../Chatai.html' เป็น Relative Route '/chat' 
+// เพื่อให้ Vercel Forward Request ไปยัง Python Backend ใน api/index.py
+const API_URL = '/chat';
 const MAX_CHARS = 2000;
 
 /* ── DOM refs ── */
@@ -48,19 +50,6 @@ themeToggle.addEventListener('click', () => {
 
 /* ══════════════════════════════════════════
    SIDEBAR TOGGLE (mobile)
-   ──────────────────────────────────────────
-   Bug fix: tapping the hamburger icon (the <i>
-   inside the button) used to fire the button's
-   click AND bubble up to the document listener
-   in the same tick. Since e.target was the <i>
-   (not the button, and not inside the sidebar),
-   the document listener immediately closed the
-   sidebar right after it opened — so it took two
-   taps to see it stay open. Fixing by stopping
-   propagation on the toggle button itself and by
-   checking sidebarToggle.contains(e.target)
-   (which also covers the icon) in the document
-   listener.
    ══════════════════════════════════════════ */
 sidebarToggle.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -97,7 +86,7 @@ chatInput.addEventListener('input', () => {
     charCounter.textContent = `${len} / ${MAX_CHARS}`;
     charCounter.className = 'char-counter';
     if (len > MAX_CHARS * 0.85) charCounter.classList.add('warn');
-    if (len >= MAX_CHARS)        charCounter.classList.add('over');
+    if (len >= MAX_CHARS)       charCounter.classList.add('over');
 
     // clear-x button
     clearInputBtn.classList.toggle('visible', len > 0);
@@ -121,7 +110,7 @@ clearInputBtn.addEventListener('click', () => {
 });
 
 /* ══════════════════════════════════════════
-   CLEAR CHAT (deletes the current chat entirely)
+   CLEAR CHAT
    ══════════════════════════════════════════ */
 clearChatBtn.addEventListener('click', () => {
     if (!conversationHistory.length) return;
@@ -140,21 +129,13 @@ clearChatBtn.addEventListener('click', () => {
 function resetChat() {
     conversationHistory = [];
     lastAIBubble = null;
-    // Remove all msg-rows
     Array.from(messagesArea.querySelectorAll('.msg-row')).forEach(el => el.remove());
-    // Show welcome
     welcomeState.style.display = 'flex';
     document.getElementById('chatTitle').textContent = 'AgriFuture AI Chat';
 }
 
 /* ══════════════════════════════════════════
    NEW CHAT
-   ──────────────────────────────────────────
-   The chat currently on screen is saved first
-   (if it has any messages), then a fresh, empty
-   chat is started. The previous chat stays in
-   the history list and can be reopened at any
-   time — nothing is lost.
    ══════════════════════════════════════════ */
 newChatBtn.addEventListener('click', () => {
     persistCurrentSession();
@@ -223,7 +204,7 @@ async function handleSend() {
 
     } catch (err) {
         removeTyping(typingId);
-        showWarning('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาตรวจสอบว่า Python backend กำลังทำงานอยู่');
+        showWarning('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาตรวจสอบว่า Backend บน Vercel หรือ Python ทำงานปกติ');
         console.error(err);
     }
 
@@ -236,7 +217,6 @@ async function handleSend() {
    ══════════════════════════════════════════ */
 async function regenerateLastResponse() {
     if (sendBtn.disabled) return;
-    // Remove last AI message from UI and history
     if (lastAIBubble) {
         lastAIBubble.remove();
         lastAIBubble = null;
@@ -307,7 +287,7 @@ function appendMessage(role, text) {
     bubble.className = 'msg-bubble';
     bubble.innerHTML = formatMarkdown(text);
 
-    // Wrap code blocks with copy buttons
+    // Code blocks
     bubble.querySelectorAll('pre').forEach(pre => {
         const wrap = document.createElement('div');
         wrap.className = 'code-block-wrap';
@@ -325,7 +305,7 @@ function appendMessage(role, text) {
         wrap.appendChild(copyBtn);
     });
 
-    // Meta row (time + actions)
+    // Meta row
     const meta = document.createElement('div');
     meta.className = 'msg-meta';
     meta.innerHTML = `<span class="msg-time">${timeStr}</span>`;
@@ -363,7 +343,7 @@ function appendMessage(role, text) {
     messagesArea.appendChild(row);
     scrollToBottom();
 
-    return row; // return reference for regenerate
+    return row;
 }
 
 /* ══════════════════════════════════════════
@@ -414,37 +394,25 @@ function showWarning(msg) {
    MARKDOWN FORMATTER
    ══════════════════════════════════════════ */
 function formatMarkdown(text) {
-    // Escape HTML first
     let s = text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-    // Code blocks (``` lang\n...```)
     s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
         `<pre><code class="lang-${lang}">${code.trim()}</code></pre>`
     );
 
-    // Inline code
     s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-    // Headings
     s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     s = s.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
     s = s.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
-
-    // Bold & italic
     s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
     s = s.replace(/\*\*(.+?)\*\*/g,     '<strong>$1</strong>');
     s = s.replace(/\*(.+?)\*/g,         '<em>$1</em>');
-
-    // Blockquote
     s = s.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-
-    // Horizontal rule
     s = s.replace(/^---$/gm, '<hr>');
 
-    // Unordered list
     s = s.replace(/(^[*\-] .+(\n|$))+/gm, match => {
         const items = match.trim().split('\n').map(l =>
             `<li>${l.replace(/^[*\-] /, '')}</li>`
@@ -452,7 +420,6 @@ function formatMarkdown(text) {
         return `<ul>${items}</ul>`;
     });
 
-    // Ordered list
     s = s.replace(/(^\d+\. .+(\n|$))+/gm, match => {
         const items = match.trim().split('\n').map(l =>
             `<li>${l.replace(/^\d+\. /, '')}</li>`
@@ -460,7 +427,6 @@ function formatMarkdown(text) {
         return `<ol>${items}</ol>`;
     });
 
-    // Simple table (| a | b | c |)
     s = s.replace(/(^\|.+\|\n)(^\|[-| :]+\|\n)((?:^\|.+\|\n?)+)/gm, (_, header, sep, body) => {
         const parseRow = row => row.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
         const heads = parseRow(header).map(h => `<th>${h}</th>`).join('');
@@ -470,10 +436,7 @@ function formatMarkdown(text) {
         return `<table><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table>`;
     });
 
-    // Links
     s = s.replace(/\[(.+?)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-    // Line breaks (only outside block elements)
     s = s.replace(/\n(?!<\/?(ul|ol|li|h[1-3]|pre|table|thead|tbody|tr|th|td|blockquote|hr))/g, '<br>');
 
     return s;
@@ -499,14 +462,7 @@ function showToast(msg = 'คัดลอกแล้ว', icon = 'fa-solid fa-c
 
 /* ══════════════════════════════════════════
    CHAT SESSION HISTORY
-   ──────────────────────────────────────────
-   Each session now stores its full message
-   list (not just a title), so switching
-   between chats restores the whole
-   conversation instead of only its name.
    ══════════════════════════════════════════ */
-
-// Save/update the chat currently on screen into chatSessions + localStorage.
 function persistCurrentSession() {
     if (!conversationHistory.length) return;
 
@@ -545,13 +501,12 @@ function persistCurrentSession() {
     renderHistory(historySearch.value);
 }
 
-// Switch to a previously saved chat, restoring its full conversation.
 function openSession(session) {
     if (session.id === currentSessionId) {
         if (window.innerWidth <= 768) sidebar.classList.remove('open');
         return;
     }
-    persistCurrentSession(); // don't lose whatever is currently on screen
+    persistCurrentSession();
 
     Array.from(messagesArea.querySelectorAll('.msg-row')).forEach(el => el.remove());
     conversationHistory = JSON.parse(JSON.stringify(session.messages || []));
