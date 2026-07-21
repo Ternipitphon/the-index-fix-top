@@ -27,27 +27,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── เสิร์ฟไฟล์ static ทั้งหมดจาก root ของ repo (เดียวกับที่ app.py วางไว้) ──
-app = Flask(__name__, static_folder='.', static_url_path='')
-
-# อนุญาต CORS สำหรับทุกโดเมนและรองรับ Content-Type: application/json ข้ามโดเมนได้ 100%
-CORS(app, resources={r"/api/*": {"origins": "*"}, r"/chat": {"origins": "*"}})
-
-# กำหนด API Key ของ Gemini
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-
-
-# ══════════════════════════════════════════════════════════════
-# หน้าเว็บ (static pages)
-# ══════════════════════════════════════════════════════════════
-@app.route('/')
-def index():
-    return app.send_static_file('form.html')
-
-
-@app.route('/<path:filename>')
-def serve_page(filename):
-    return app.send_static_file(filename)
+# ใหม่ — ตัด static route ออกทั้งหมด (Vercel serve public/ ให้เองผ่าน CDN)
+app = Flask(__name__)
+CORS(app)   # เก็บไว้เผื่ออนาคตมีโดเมนอื่นเรียก แต่จริงๆ ตอนนี้ same-origin แล้วไม่จำเป็นแล้วก็ได้
 
 
 # ══════════════════════════════════════════════════════════════
