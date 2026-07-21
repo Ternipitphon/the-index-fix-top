@@ -1,20 +1,3 @@
-"""
-AgriFuture AI — Combined Flask Backend (สำหรับ deploy บน Render)
-==================================================================
-รวม 3 ฟีเจอร์เข้าไฟล์เดียว เพื่อให้ Render รันได้ด้วย entrypoint เดียว:
-
-  1. /api/analyze          — วิเคราะห์การปลูกพืช (Gemini)      [เดิมจาก app.py]
-  2. /api/locations        — รายชื่อจังหวัดที่รองรับ            [เดิมจาก Phaya.py]
-     /api/weather/<province> — พยากรณ์อากาศ (Open-Meteo)        [เดิมจาก Phaya.py]
-  3. /chat                 — แชท AI (Gemini แทน Ollama เดิม)   [ปรับจาก Chat.py]
-
-และเสิร์ฟไฟล์หน้าเว็บทั้งหมด (html/css/js/img/video) จาก root ของ repo เอง
-เพราะไฟล์ .html เดิมเรียก css/js ด้วย relative path อยู่แล้ว
-
-ต้องตั้งค่า Environment Variable บน Render:
-  GEMINI_API_KEY = <api key ของคุณ>
-"""
-
 import os
 import json
 import time
@@ -27,15 +10,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── เสิร์ฟไฟล์ static ทั้งหมดจาก root ของ repo (เดียวกับที่ app.py วางไว้) ──
 app = Flask(__name__, static_folder='.', static_url_path='')
 
-# อนุญาต CORS สำหรับทุกโดเมนและรองรับ Content-Type: application/json ข้ามโดเมนได้ 100%
-CORS(app, resources={r"/api/*": {"origins": "*"}, r"/chat": {"origins": "*"}})
+# 1. ตั้งค่า CORS อนุญาตทุก Route ให้ Frontend บน Vercel/Domain อื่นๆ เรียกใช้ได้ 100%
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # กำหนด API Key ของ Gemini
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
+# เลือกใข้ Gemini Model ที่ถูกต้อง (ใช้ 1.5-flash เพื่อความรวดเร็วและประหยัด)
+MODEL_NAME = "gemini-1.5-flash"
 
 # ══════════════════════════════════════════════════════════════
 # หน้าเว็บ (static pages)
@@ -44,14 +28,12 @@ genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 def index():
     return app.send_static_file('form.html')
 
-
 @app.route('/<path:filename>')
 def serve_page(filename):
     return app.send_static_file(filename)
 
-
 # ══════════════════════════════════════════════════════════════
-# 1) วิเคราะห์การปลูกพืช — /api/analyze  (เดิมจาก app.py)
+# Helper Functions
 # ══════════════════════════════════════════════════════════════
 def generate_content_with_retry(model, prompt, retries=5, backoff_in_seconds=2):
     for i in range(retries):
@@ -63,7 +45,9 @@ def generate_content_with_retry(model, prompt, retries=5, backoff_in_seconds=2):
                 continue
             raise e
 
-
+# ══════════════════════════════════════════════════════════════
+# 1) วิเคราะห์การปลูกพืช — /api/analyze
+# ══════════════════════════════════════════════════════════════
 @app.route('/api/analyze', methods=['POST'])
 def analyze_crop():
     try:
@@ -138,7 +122,7 @@ def analyze_crop():
 """
 
         model = genai.GenerativeModel(
-            "gemini-2.5-flash",
+            MODEL_NAME,
             generation_config={
                 "temperature": 0.15,
                 "response_mime_type": "application/json"
@@ -161,19 +145,12 @@ def analyze_crop():
         })
 
     except json.JSONDecodeError as e:
-        return jsonify({
-            "success": False,
-            "error": f"[AgriFuture-Backend] AI ประมวลผลข้อมูลกลับมาคลาดเคลื่อนจากโครงสร้างมาตรฐาน: {str(e)}"
-        }), 500
+        return jsonify({"success": False, "error": f"[AgriFuture-Backend] AI ประมวลผลข้อมูลกลับมาคลาดเคลื่อน: {str(e)}"}), 500
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": f"[AgriFuture-Backend] ระบบเกิดข้อผิดพลาดในการประมวลผล: {str(e)}"
-        }), 500
-
+        return jsonify({"success": False, "error": f"[AgriFuture-Backend] ระบบเกิดข้อผิดพลาด: {str(e)}"}), 500
 
 # ══════════════════════════════════════════════════════════════
-# 2) พยากรณ์อากาศ — /api/locations, /api/weather/<province>  (เดิมจาก Phaya.py)
+# 2) พยากรณ์อากาศ — /api/locations, /api/weather/<province>
 # ══════════════════════════════════════════════════════════════
 LOCATIONS = {
     "กรุงเทพมหานคร": {"lat": 13.7563, "lon": 100.5018},
@@ -205,15 +182,12 @@ WMO_CODES = {
     99: {"label": "พายุฝนลูกเห็บหนัก", "icon": "🌩️"},
 }
 
-
 def get_wmo(code):
     return WMO_CODES.get(int(code), {"label": "ไม่ทราบ", "icon": "🌡️"})
-
 
 @app.route("/api/locations")
 def locations():
     return jsonify({"locations": list(LOCATIONS.keys())})
-
 
 @app.route("/api/weather/<province>")
 def weather(province):
@@ -313,9 +287,8 @@ def weather(province):
         "hourly": hourly_out,
     })
 
-
 # ══════════════════════════════════════════════════════════════
-# 3) แชท AI — /chat  (ปรับจาก Chat.py: เปลี่ยนจาก Ollama มาเป็น Gemini)
+# 3) แชท AI — /chat
 # ══════════════════════════════════════════════════════════════
 CHAT_SYSTEM_PROMPT = """คุณคือ AgriFuture AI ผู้ช่วยด้านการเกษตรที่เชี่ยวชาญสำหรับเกษตรกรและผู้สนใจการเกษตรในประเทศไทย
 
@@ -347,30 +320,25 @@ CREATOR_KEYWORDS = [
     "who built you", "creator", "developer of this"
 ]
 
-
 def is_creator_question(message: str) -> bool:
     if not message:
         return False
     lowered = message.lower()
     return any(keyword.lower() in lowered for keyword in CREATOR_KEYWORDS)
 
-
 def extract_user_message(data: dict) -> str:
-    """แกะข้อความจากโครงสร้างอาเรย์หรือข้อความเดี่ยวตามที่ JavaScript ส่งมา"""
     if 'messages' in data and len(data['messages']) > 0:
         return data['messages'][-1].get('content', '')
     return data.get('message', data.get('prompt', ''))
 
-
 def query_gemini_chat(user_message: str) -> str:
     model = genai.GenerativeModel(
-        "gemini-2.5-flash",
+        MODEL_NAME,
         system_instruction=CHAT_SYSTEM_PROMPT,
         generation_config={"temperature": 0.7}
     )
     response = generate_content_with_retry(model, user_message)
     return (response.text or "").strip()
-
 
 @app.route('/chat', methods=['POST', 'OPTIONS'])
 def chat_api():
@@ -398,16 +366,12 @@ def chat_api():
         print("!! /chat Error !! :", str(e))
         return jsonify({'error': f'ระบบขัดข้อง: {str(e)}'}), 500
 
-
 # ══════════════════════════════════════════════════════════════
-# 4) วางแผนการปลูกแบบละเอียด — /api/plan  (ย้ายมาจาก Chat.py)
+# 4) วางแผนการปลูกแบบละเอียด — /api/plan
 # ══════════════════════════════════════════════════════════════
 def generate_plan_with_gemini(payload, retries=5, backoff_in_seconds=2):
-    """สร้างแผนการปลูกแบบละเอียด (JSON) จากข้อมูลผลวิเคราะห์ที่ plan.js ส่งมา"""
     if not os.environ.get("GEMINI_API_KEY"):
-        raise RuntimeError(
-            "ไม่พบ GEMINI_API_KEY — กรุณาตั้งค่าใน Environment Variables"
-        )
+        raise RuntimeError("ไม่พบ GEMINI_API_KEY — กรุณาตั้งค่าใน Environment Variables")
 
     crop_name       = payload.get('crop_name', '')
     province        = payload.get('province', '')
@@ -459,7 +423,7 @@ def generate_plan_with_gemini(payload, retries=5, backoff_in_seconds=2):
 """
 
     model = genai.GenerativeModel(
-        "gemini-2.5-flash",
+        MODEL_NAME,
         generation_config={
             "temperature": 0.3,
             "response_mime_type": "application/json"
@@ -482,7 +446,6 @@ def generate_plan_with_gemini(payload, retries=5, backoff_in_seconds=2):
                 time.sleep(backoff_in_seconds * (2 ** i))
                 continue
             raise RuntimeError(f"เรียก Gemini API ไม่สำเร็จ: {str(e)}")
-
 
 @app.route('/api/plan', methods=['POST', 'OPTIONS'])
 def plan_api():
@@ -509,7 +472,6 @@ def plan_api():
         print("!! /api/plan Error !! :", str(e))
         return jsonify({'success': False, 'error': f'ระบบขัดข้อง: {str(e)}'}), 500
 
-
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({
@@ -517,7 +479,6 @@ def health_check():
         'msg': 'AgriFuture combined API ready — /api/analyze, /chat, /api/plan',
         'gemini_configured': bool(os.environ.get("GEMINI_API_KEY"))
     })
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5001)), debug=True)
