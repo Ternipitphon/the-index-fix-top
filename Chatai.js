@@ -4,8 +4,9 @@
     หรือปลุกไม่ทัน ทำให้ fetch พังแบบ CORS/ERR_FAILED)
    ══════════════════════════════════════════ */
 
-const API_URL     = 'https://the-index-d3hd.onrender.com/chat';
-const HEALTH_URL  = 'https://the-index-d3hd.onrender.com/health';
+// ใหม่
+const API_URL     = '/chat';
+const HEALTH_URL  = '/health';
 const MAX_CHARS   = 2000;
 
 /* ── DOM refs ── */
