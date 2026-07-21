@@ -1,13 +1,9 @@
 /* ══════════════════════════════════════════
-   AgriFuture AI — Chat JS  v3.1
-   (แก้ไข: รองรับกรณี backend บน Render "หลับ"
-    หรือปลุกไม่ทัน ทำให้ fetch พังแบบ CORS/ERR_FAILED)
+   AgriFuture AI — Chat JS  v3.0
    ══════════════════════════════════════════ */
 
-// ใหม่
-const API_URL     = '/chat';
-const HEALTH_URL  = '/health';
-const MAX_CHARS   = 2000;
+const API_URL = 'https://the-index-d3hd.onrender.com/chat';
+const MAX_CHARS = 2000;
 
 /* ── DOM refs ── */
 const messagesArea  = document.getElementById('messagesArea');
@@ -34,75 +30,6 @@ let chatSessions        = JSON.parse(localStorage.getItem('agri_chat_sessions') 
 let currentSessionId    = null; // id of the session currently open, null = unsaved new chat
 let lastAIBubble        = null; // for regenerate
 let toastTimer          = null;
-
-/* ══════════════════════════════════════════
-   BACKEND CONNECTIVITY (แก้ไขใหม่)
-   ──────────────────────────────────────────
-   ปัญหาเดิม: Render free tier จะสลีป backend
-   หลังไม่มีคนใช้งาน พอมี request แรกเข้ามาต้อง
-   ใช้เวลาปลุก 30-60 วิ ถ้า fetch ตรง /chat
-   ตรงๆ โดยไม่มี timeout/retry จะพังทันทีแบบ
-   "CORS blocked" / "net::ERR_FAILED" (ซึ่งจริงๆ
-   ไม่ใช่ปัญหา CORS แต่เป็นเพราะ request ไปไม่ถึง
-   ปลายทางเลย)
-
-   ทางแก้:
-   1. ยิง "ปลุกเซิร์ฟเวอร์" แบบเงียบๆ ตั้งแต่โหลด
-      หน้าเว็บ (ไม่ต้องรอผู้ใช้พิมพ์)
-   2. ใส่ timeout ให้ fetch ด้วย AbortController
-      กัน request ค้างตลอดไป
-   3. ถ้า attempt แรกล้มเหลว (timeout/เครือข่าย)
-      ให้ retry อัตโนมัติอีกครั้งด้วย timeout ที่
-      ยาวขึ้น พร้อมแจ้งผู้ใช้ว่า "กำลังปลุกเซิร์ฟเวอร์"
-   4. แยกข้อความ error ให้ชัดว่าเป็นปัญหาการเชื่อมต่อ
-      (server หลับ/เน็ตหลุด) หรือ error จริงจาก backend
-   ══════════════════════════════════════════ */
-
-// ปลุก backend แบบเงียบๆ ทันทีที่หน้าเว็บโหลดเสร็จ
-// (ไม่ต้องรอผลลัพธ์ ไม่ต้องแจ้งอะไรผู้ใช้ ถ้าสำเร็จ
-//  ก็แปลว่าตอนผู้ใช้พิมพ์จริง backend จะตื่นอยู่แล้ว)
-function warmUpBackend() {
-    fetchWithTimeout(HEALTH_URL, { method: 'GET' }, 45000).catch(() => {
-        // เงียบไว้ — ถ้าปลุกไม่สำเร็จตอนนี้ ค่อยลองใหม่ตอนส่งข้อความจริง
-    });
-}
-
-// fetch ที่มี timeout ในตัว กัน request ค้างไม่มีที่สิ้นสุด
-function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    return fetch(url, { ...options, signal: controller.signal })
-        .finally(() => clearTimeout(timer));
-}
-
-// ส่งข้อความไป backend พร้อม retry อัตโนมัติ 1 ครั้ง
-// ถ้าครั้งแรกล้มเหลวเพราะ timeout/เครือข่าย (ไม่ใช่ error
-// จาก backend ที่ตอบกลับมาแล้ว) — เผื่อกรณี Render กำลังปลุกเครื่องพอดี
-async function sendToBackend(payload, onRetrying) {
-    try {
-        const res = await fetchWithTimeout(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }, 15000);
-        return await res.json();
-    } catch (firstErr) {
-        // แจ้งผู้ใช้ว่ากำลังลองใหม่ (มักเกิดจาก Render cold start)
-        if (onRetrying) onRetrying();
-
-        try {
-            const res = await fetchWithTimeout(API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }, 45000);
-            return await res.json();
-        } catch (secondErr) {
-            // ทั้งสองครั้งล้มเหลว โยน error ที่สื่อความหมายชัดเจนขึ้น
-            throw secondErr;
-        }
-    }
-}
 
 /* ══════════════════════════════════════════
    THEME (Light / Dark)
@@ -252,8 +179,7 @@ function sendSuggestion(text) {
 }
 
 /* ══════════════════════════════════════════
-   MAIN SEND HANDLER (แก้ไข: ใช้ sendToBackend
-   ที่มี timeout + retry แทนการ fetch ตรงๆ)
+   MAIN SEND HANDLER
    ══════════════════════════════════════════ */
 async function handleSend() {
     const text = chatInput.value.trim();
@@ -274,18 +200,16 @@ async function handleSend() {
     appendMessage('user', text);
     conversationHistory.push({ role: 'user', content: text });
 
-    let typingId = showTyping();
+    const typingId = showTyping();
 
     try {
-        const data = await sendToBackend(
-            { messages: conversationHistory },
-            () => {
-                // กำลัง retry — อัปเดต typing bubble ให้ผู้ใช้รู้ว่าไม่ได้ค้าง
-                removeTyping(typingId);
-                typingId = showTyping('เซิร์ฟเวอร์กำลังปลุกตัวเอง กรุณารอสักครู่…');
-            }
-        );
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: conversationHistory })
+        });
 
+        const data = await res.json();
         removeTyping(typingId);
 
         if (data.error) {
@@ -299,11 +223,7 @@ async function handleSend() {
 
     } catch (err) {
         removeTyping(typingId);
-        if (err.name === 'AbortError') {
-            showWarning('เซิร์ฟเวอร์ตอบสนองช้าเกินไป (อาจกำลังปลุกตัวเองอยู่) กรุณาลองส่งข้อความอีกครั้งใน 30-60 วินาที');
-        } else {
-            showWarning('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาตรวจสอบว่า Python backend กำลังทำงานอยู่ หรือรอสักครู่แล้วลองใหม่');
-        }
+        showWarning('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาตรวจสอบว่า Python backend กำลังทำงานอยู่');
         console.error(err);
     }
 
@@ -312,8 +232,7 @@ async function handleSend() {
 }
 
 /* ══════════════════════════════════════════
-   REGENERATE LAST AI RESPONSE (แก้ไข: ใช้
-   sendToBackend เช่นเดียวกับ handleSend)
+   REGENERATE LAST AI RESPONSE
    ══════════════════════════════════════════ */
 async function regenerateLastResponse() {
     if (sendBtn.disabled) return;
@@ -328,16 +247,15 @@ async function regenerateLastResponse() {
     if (!conversationHistory.length) return;
 
     sendBtn.disabled = true;
-    let typingId = showTyping();
+    const typingId = showTyping();
 
     try {
-        const data = await sendToBackend(
-            { messages: conversationHistory },
-            () => {
-                removeTyping(typingId);
-                typingId = showTyping('เซิร์ฟเวอร์กำลังปลุกตัวเอง กรุณารอสักครู่…');
-            }
-        );
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: conversationHistory })
+        });
+        const data = await res.json();
         removeTyping(typingId);
 
         if (data.error) {
@@ -349,8 +267,7 @@ async function regenerateLastResponse() {
         }
     } catch (err) {
         removeTyping(typingId);
-        showWarning('ไม่สามารถสร้างคำตอบใหม่ได้ กรุณาลองใหม่อีกครั้ง');
-        console.error(err);
+        showWarning('ไม่สามารถสร้างคำตอบใหม่ได้');
     }
 
     sendBtn.disabled = false;
@@ -450,10 +367,9 @@ function appendMessage(role, text) {
 }
 
 /* ══════════════════════════════════════════
-   TYPING INDICATOR (แก้ไข: รองรับข้อความกำกับ
-   เพิ่มเติม เช่น ตอนกำลัง retry ปลุกเซิร์ฟเวอร์)
+   TYPING INDICATOR
    ══════════════════════════════════════════ */
-function showTyping(label) {
+function showTyping() {
     const id = 'typing-' + Date.now();
     const row = document.createElement('div');
     row.className = 'msg-row ai';
@@ -465,7 +381,6 @@ function showTyping(label) {
                 <span class="typing-dot"></span>
                 <span class="typing-dot"></span>
                 <span class="typing-dot"></span>
-                ${label ? `<span style="margin-left:8px;font-size:12px;opacity:.75;">${label}</span>` : ''}
             </div>
         </div>`;
     messagesArea.appendChild(row);
@@ -726,5 +641,4 @@ firebase.auth().onAuthStateChanged(user => {
 });
 
 /* ── Init ── */
-warmUpBackend();   // แก้ไข: ปลุก backend ทันทีที่หน้าเว็บโหลดเสร็จ
 renderHistory();
