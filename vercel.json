@@ -8,7 +8,7 @@
   "routes": [
     {
       "src": "/",
-      "dest": "/form.html"
+      "dest": "/Open.html"
     },
     {
       "src": "/chat",
