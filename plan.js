@@ -241,6 +241,34 @@ function renderMiniList() {
     </div>`;
 }
 
+// ── Helper: fetch พร้อม timeout + retry อัตโนมัติ ─────────────────
+// รองรับกรณี Render free tier "sleep" อยู่ (cold start ใช้เวลานาน)
+// - timeoutMs: เวลาสูงสุดต่อ 1 ครั้งก่อนยกเลิก request (default 45 วิ เผื่อ cold start)
+// - maxRetries: จำนวนครั้งที่ลองใหม่หลัง fail (ไม่นับครั้งแรก)
+// - onRetry: callback แจ้งสถานะระหว่าง retry เพื่ออัปเดต UI
+async function fetchWithRetry(url, options, { timeoutMs = 45000, maxRetries = 2, onRetry } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      return res;
+    } catch (err) {
+      clearTimeout(timer);
+      lastErr = err;
+      if (attempt < maxRetries) {
+        onRetry?.(attempt + 1, maxRetries);
+        // รอสักครู่ก่อนลองใหม่ (ให้เวลาเซิร์ฟเวอร์ตื่น)
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+    }
+  }
+  throw lastErr;
+}
+
 // ── กดปุ่ม "วางแผน" → เรียก backend Gemini ───────────────────────
 planBtn.addEventListener('click', async () => {
   if (!selectedSession) return;
@@ -249,30 +277,46 @@ planBtn.addEventListener('click', async () => {
   planErrorSection.style.display = 'none';
   planLoadingSection.style.display = 'block';
 
+  const planLoadingText = planLoadingSection.querySelector('[data-loading-text]')
+    || planLoadingSection.querySelector('p')
+    || planLoadingSection;
+  const defaultLoadingText = planLoadingText.textContent;
+
   const inputs = selectedSession.inputs || {};
   const sc = selectedSession.result?.selected_crop || {};
 
   try {
-    const res = await fetch(`${API_BASE}/api/plan`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        crop_name: sc.name || inputs.interested_crop || '',
-        province: inputs.province || '',
-        district: inputs.district || '',
-        budget: inputs.budget || '',
-        area: inputs.area || '',
-        water_source: inputs.water_source || '',
-        planting_month: inputs.planting_month || '',
-        success_chance: sc.success_chance || '',
-        success_percent: sc.success_percent || '',
-        estimated_income: sc.estimated_income || '',
-        roi_months: sc.roi_months || '',
-        pros: sc.pros || [],
-        cons: sc.cons || [],
-        tips: sc.tips || []
-      })
-    });
+    const res = await fetchWithRetry(
+      `${API_BASE}/api/plan`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          crop_name: sc.name || inputs.interested_crop || '',
+          province: inputs.province || '',
+          district: inputs.district || '',
+          budget: inputs.budget || '',
+          area: inputs.area || '',
+          water_source: inputs.water_source || '',
+          planting_month: inputs.planting_month || '',
+          success_chance: sc.success_chance || '',
+          success_percent: sc.success_percent || '',
+          estimated_income: sc.estimated_income || '',
+          roi_months: sc.roi_months || '',
+          pros: sc.pros || [],
+          cons: sc.cons || [],
+          tips: sc.tips || []
+        })
+      },
+      {
+        timeoutMs: 45000,
+        maxRetries: 2,
+        onRetry: (attempt, total) => {
+          // เซิร์ฟเวอร์ (Render free tier) อาจกำลัง "ตื่น" จาก sleep — แจ้งผู้ใช้ตรงๆ
+          planLoadingText.textContent = `เซิร์ฟเวอร์กำลังเริ่มทำงาน กรุณารอสักครู่... (ลองใหม่ ${attempt}/${total})`;
+        }
+      }
+    );
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
@@ -289,7 +333,14 @@ planBtn.addEventListener('click', async () => {
     console.error('Plan error:', err);
     planLoadingSection.style.display = 'none';
     planErrorSection.style.display = 'block';
-    planErrorMsg.textContent = 'ไม่สามารถวางแผนการปลูกได้: ' + err.message;
+
+    // แยกข้อความ error ให้เข้าใจง่ายขึ้นสำหรับกรณีเซิร์ฟเวอร์ไม่ตอบสนอง/ตื่นไม่ทัน
+    const isNetworkFail = err.name === 'AbortError' || /Failed to fetch|NetworkError|ERR_FAILED/i.test(err.message || '');
+    planErrorMsg.textContent = isNetworkFail
+      ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ เซิร์ฟเวอร์อาจกำลังเริ่มทำงานใหม่ (cold start) กรุณาลองใหม่อีกครั้งใน 30-60 วินาที'
+      : 'ไม่สามารถวางแผนการปลูกได้: ' + err.message;
+  } finally {
+    planLoadingText.textContent = defaultLoadingText;
   }
 });
 
