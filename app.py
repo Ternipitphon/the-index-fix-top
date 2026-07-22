@@ -20,8 +20,10 @@ gemini_key = os.environ.get("GEMINI_API_KEY")
 if gemini_key:
     genai.configure(api_key=gemini_key)
 
-# ✅ แก้ไข: เปลี่ยนเป็น gemini-2.5-flash
-MODEL_NAME = "gemini-2.5-flash"
+# ✅ แก้ไข: ใช้ alias "gemini-flash-latest" แทนการล็อกเวอร์ชันตายตัว
+# alias นี้ Google จะอัปเดตให้เองอัตโนมัติเมื่อมีรุ่นใหม่ (ปัจจุบันคือ gemini-3.5-flash)
+# ป้องกันปัญหาโมเดลถูกปลดระวางกะทันหันแบบที่เจอกับ gemini-2.5-flash
+MODEL_NAME = "gemini-flash-latest"
 
 # ══════════════════════════════════════════════════════════════
 # หน้าเว็บ (static pages)
